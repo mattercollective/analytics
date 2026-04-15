@@ -1,0 +1,87 @@
+steps:
+  # Build and push analytics-api image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg=CMD=server'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/matter-reporters/analytics-api:$COMMIT_SHA'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/matter-reporters/analytics-api:latest'
+      - '.'
+    id: 'build-api'
+
+  # Build and push analytics-worker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg=CMD=worker'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/matter-reporters/analytics-worker:$COMMIT_SHA'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/matter-reporters/analytics-worker:latest'
+      - '.'
+    id: 'build-worker'
+
+  # Push API image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/matter-reporters/analytics-api']
+    id: 'push-api'
+    waitFor: ['build-api']
+
+  # Push Worker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/matter-reporters/analytics-worker']
+    id: 'push-worker'
+    waitFor: ['build-worker']
+
+  # Deploy analytics-api to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'analytics-api'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/matter-reporters/analytics-api:$COMMIT_SHA'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--port=8080'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--min-instances=1'
+      - '--max-instances=10'
+      - '--timeout=30s'
+      - '--set-env-vars=ENV=production,LOG_LEVEL=info,LOG_FORMAT=json,GCP_PROJECT_ID=$PROJECT_ID,DATABASE_POOL_MAX=20,DATABASE_POOL_MIN=2'
+      - '--set-secrets=DATABASE_URL=analytics-database-url:latest,API_KEYS=analytics-api-keys:latest,SPOTIFY_CLIENT_ID=analytics-spotify-client-id:latest,SPOTIFY_CLIENT_SECRET=analytics-spotify-client-secret:latest,SPOTIFY_LICENSOR_ID=analytics-spotify-licensor-id:latest,CORS_ORIGINS=analytics-cors-origins:latest'
+      - '--allow-unauthenticated'
+    id: 'deploy-api'
+    waitFor: ['push-api']
+
+  # Deploy analytics-worker to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'analytics-worker'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/matter-reporters/analytics-worker:$COMMIT_SHA'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--port=8080'
+      - '--memory=1Gi'
+      - '--cpu=1'
+      - '--min-instances=0'
+      - '--max-instances=5'
+      - '--timeout=900s'
+      - '--set-env-vars=ENV=production,LOG_LEVEL=info,LOG_FORMAT=json,GCP_PROJECT_ID=$PROJECT_ID,DATABASE_POOL_MAX=20,DATABASE_POOL_MIN=2'
+      - '--set-secrets=DATABASE_URL=analytics-database-url:latest,API_KEYS=analytics-api-keys:latest,SPOTIFY_CLIENT_ID=analytics-spotify-client-id:latest,SPOTIFY_CLIENT_SECRET=analytics-spotify-client-secret:latest,SPOTIFY_LICENSOR_ID=analytics-spotify-licensor-id:latest,CORS_ORIGINS=analytics-cors-origins:latest'
+      - '--no-allow-unauthenticated'
+    id: 'deploy-worker'
+    waitFor: ['push-worker']
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/matter-reporters/analytics-api'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/matter-reporters/analytics-worker'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
