@@ -50,7 +50,8 @@ func main() {
 	// Ingestion orchestrator (for sync trigger endpoints)
 	metricsRepo := repository.NewMetricsRepo(pool)
 	syncRepo := repository.NewSyncRepo(pool)
-	worker := ingestion.NewWorker(metricsRepo, syncRepo, logger)
+	engagementRepo := repository.NewEngagementRepo(pool)
+	worker := ingestion.NewWorker(metricsRepo, syncRepo, engagementRepo, logger)
 
 	orchestrator, err := ingestion.NewOrchestrator(ctx, cfg, worker, logger)
 	if err != nil {

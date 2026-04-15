@@ -53,7 +53,7 @@ func (r *AssetRepo) ListAssets(ctx context.Context, search *string, clientID *uu
 	// Data
 	offset := (page - 1) * perPage
 	dataQuery := fmt.Sprintf(`
-		SELECT a.id, a.asset_type, a.title, a.is_active, a.created_at, a.updated_at,
+		SELECT a.id, a.asset_type, a.title, a.artist_name, a.is_active, a.created_at, a.updated_at,
 		       ci.isrc, ci.upc, ci.yt_asset_id, ci.yt_channel_id
 		FROM public.assets a
 		LEFT JOIN public.asset_current_identifiers ci ON ci.asset_id = a.id
@@ -71,7 +71,7 @@ func (r *AssetRepo) ListAssets(ctx context.Context, search *string, clientID *uu
 	var results []model.AssetWithIdentifiers
 	for rows.Next() {
 		var a model.AssetWithIdentifiers
-		if err := rows.Scan(&a.ID, &a.AssetType, &a.Title, &a.IsActive,
+		if err := rows.Scan(&a.ID, &a.AssetType, &a.Title, &a.ArtistName, &a.IsActive,
 			&a.CreatedAt, &a.UpdatedAt,
 			&a.ISRC, &a.UPC, &a.YTAssetID, &a.YTChannelID); err != nil {
 			return nil, 0, fmt.Errorf("scan asset: %w", err)
@@ -86,13 +86,13 @@ func (r *AssetRepo) ListAssets(ctx context.Context, search *string, clientID *uu
 func (r *AssetRepo) GetAsset(ctx context.Context, id uuid.UUID) (*model.AssetWithIdentifiers, error) {
 	var a model.AssetWithIdentifiers
 	err := r.pool.QueryRow(ctx,
-		`SELECT a.id, a.asset_type, a.title, a.is_active, a.created_at, a.updated_at,
+		`SELECT a.id, a.asset_type, a.title, a.artist_name, a.is_active, a.created_at, a.updated_at,
 		        ci.isrc, ci.upc, ci.yt_asset_id, ci.yt_channel_id
 		 FROM public.assets a
 		 LEFT JOIN public.asset_current_identifiers ci ON ci.asset_id = a.id
 		 WHERE a.id = $1`,
 		id,
-	).Scan(&a.ID, &a.AssetType, &a.Title, &a.IsActive,
+	).Scan(&a.ID, &a.AssetType, &a.Title, &a.ArtistName, &a.IsActive,
 		&a.CreatedAt, &a.UpdatedAt,
 		&a.ISRC, &a.UPC, &a.YTAssetID, &a.YTChannelID)
 

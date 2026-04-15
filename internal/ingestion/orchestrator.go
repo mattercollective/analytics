@@ -28,7 +28,7 @@ func NewOrchestrator(ctx context.Context, cfg *config.Config, worker *Worker, lo
 
 	// Spotify
 	if cfg.SpotifyClientID != "" && cfg.SpotifyClientSecret != "" {
-		fetchers["spotify"] = spotify.NewClient(ctx, cfg.SpotifyClientID, cfg.SpotifyClientSecret)
+		fetchers["spotify"] = spotify.NewClient(ctx, cfg.SpotifyClientID, cfg.SpotifyClientSecret, cfg.SpotifyLicensorID)
 		logger.Info().Msg("spotify adapter initialized")
 	}
 

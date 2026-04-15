@@ -280,6 +280,132 @@ func (r *MetricsRepo) QueryTerritories(ctx context.Context, assetID uuid.UUID, p
 	return results, rows.Err()
 }
 
+// ArtistQuery holds filters for by-artist aggregation.
+type ArtistQuery struct {
+	ClientID  uuid.UUID
+	Metrics   []model.MetricType
+	Platforms []string
+	StartDate time.Time
+	EndDate   time.Time
+	Limit     int
+}
+
+// QueryByArtist aggregates metrics grouped by artist_name.
+func (r *MetricsRepo) QueryByArtist(ctx context.Context, q ArtistQuery) ([]model.ArtistSummary, error) {
+	var b strings.Builder
+	args := []any{q.ClientID, q.StartDate, q.EndDate}
+	argIdx := 4
+
+	b.WriteString(`SELECT a.artist_name, COUNT(DISTINCT a.id) AS asset_count, m.metric_type, SUM(m.value) AS total
+		FROM analytics.metrics m
+		JOIN public.assets a ON a.id = m.asset_id
+		JOIN analytics.client_assets ca ON ca.asset_id = m.asset_id AND ca.client_id = $1
+		WHERE m.metric_date >= $2 AND m.metric_date <= $3
+		AND a.artist_name IS NOT NULL`)
+
+	if len(q.Platforms) > 0 {
+		fmt.Fprintf(&b, ` AND m.platform_id = ANY($%d)`, argIdx)
+		args = append(args, q.Platforms)
+		argIdx++
+	}
+
+	if len(q.Metrics) > 0 {
+		metricStrings := make([]string, len(q.Metrics))
+		for i, mt := range q.Metrics {
+			metricStrings[i] = string(mt)
+		}
+		fmt.Fprintf(&b, ` AND m.metric_type = ANY($%d::analytics.metric_type[])`, argIdx)
+		args = append(args, metricStrings)
+		argIdx++
+	}
+
+	b.WriteString(` GROUP BY a.artist_name, m.metric_type ORDER BY total DESC`)
+
+	rows, err := r.pool.Query(ctx, b.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("query by artist: %w", err)
+	}
+	defer rows.Close()
+
+	artistMap := make(map[string]*model.ArtistSummary)
+	for rows.Next() {
+		var artistName string
+		var assetCount int
+		var metricType string
+		var total int64
+		if err := rows.Scan(&artistName, &assetCount, &metricType, &total); err != nil {
+			return nil, fmt.Errorf("scan artist row: %w", err)
+		}
+
+		as, ok := artistMap[artistName]
+		if !ok {
+			as = &model.ArtistSummary{
+				ArtistName: artistName,
+				AssetCount: assetCount,
+				Metrics:    make(map[string]int64),
+			}
+			artistMap[artistName] = as
+		}
+		as.Metrics[metricType] += total
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	results := make([]model.ArtistSummary, 0, len(artistMap))
+	for _, as := range artistMap {
+		results = append(results, *as)
+	}
+
+	if q.Limit > 0 && len(results) > q.Limit {
+		results = results[:q.Limit]
+	}
+
+	return results, nil
+}
+
+// QueryTopArtists returns the top artists ranked by a given metric.
+func (r *MetricsRepo) QueryTopArtists(ctx context.Context, clientID uuid.UUID, metricType model.MetricType, platformID *string, startDate, endDate time.Time, limit int) ([]model.TopArtist, error) {
+	var b strings.Builder
+	args := []any{clientID, string(metricType), startDate, endDate}
+	argIdx := 5
+
+	b.WriteString(`SELECT a.artist_name, COUNT(DISTINCT a.id) AS asset_count, SUM(m.value) AS total
+		FROM analytics.metrics m
+		JOIN public.assets a ON a.id = m.asset_id
+		JOIN analytics.client_assets ca ON ca.asset_id = m.asset_id AND ca.client_id = $1
+		WHERE m.metric_type = $2::analytics.metric_type
+		AND m.metric_date >= $3 AND m.metric_date <= $4
+		AND a.artist_name IS NOT NULL`)
+
+	if platformID != nil {
+		fmt.Fprintf(&b, ` AND m.platform_id = $%d`, argIdx)
+		args = append(args, *platformID)
+		argIdx++
+	}
+
+	fmt.Fprintf(&b, ` GROUP BY a.artist_name ORDER BY total DESC LIMIT $%d`, argIdx)
+	args = append(args, limit)
+
+	rows, err := r.pool.Query(ctx, b.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("query top artists: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.TopArtist
+	for rows.Next() {
+		var ta model.TopArtist
+		ta.MetricType = metricType
+		if err := rows.Scan(&ta.ArtistName, &ta.AssetCount, &ta.Value); err != nil {
+			return nil, fmt.Errorf("scan top artist: %w", err)
+		}
+		results = append(results, ta)
+	}
+
+	return results, rows.Err()
+}
+
 // ResolveAssetID looks up an asset_id from an identifier (ISRC, UPC, or YT Asset ID).
 func (r *MetricsRepo) ResolveAssetID(ctx context.Context, identifierType, identifierValue string) (*uuid.UUID, error) {
 	var assetID uuid.UUID

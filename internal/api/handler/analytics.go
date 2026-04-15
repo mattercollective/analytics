@@ -76,6 +76,30 @@ func (h *AnalyticsHandler) Summary(w http.ResponseWriter, r *http.Request) {
 			sq.Metrics = append(sq.Metrics, model.MetricType(m))
 		}
 	}
+
+	// content_type filter: maps base metrics to content-type-specific variants
+	if ct := q.Get("content_type"); ct != "" {
+		if mapping, ok := model.ContentTypeMetricMap[ct]; ok {
+			if len(sq.Metrics) == 0 {
+				// Default metrics when content_type specified without explicit metrics
+				for _, mapped := range mapping {
+					sq.Metrics = append(sq.Metrics, mapped)
+				}
+			} else {
+				// Map requested metrics to their content-type variants
+				var mapped []model.MetricType
+				for _, m := range sq.Metrics {
+					if ct, ok := mapping[m]; ok {
+						mapped = append(mapped, ct)
+					} else {
+						mapped = append(mapped, m)
+					}
+				}
+				sq.Metrics = mapped
+			}
+		}
+	}
+
 	if territories := q.Get("territory"); territories != "" {
 		sq.Territories = strings.Split(territories, ",")
 	}

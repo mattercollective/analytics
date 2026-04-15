@@ -8,12 +8,13 @@ import (
 
 // Asset mirrors the public.assets table (read-only in analytics engine).
 type Asset struct {
-	ID        uuid.UUID `json:"id"`
-	AssetType string    `json:"asset_type"`
-	Title     string    `json:"title"`
-	IsActive  bool      `json:"is_active"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         uuid.UUID `json:"id"`
+	AssetType  string    `json:"asset_type"`
+	Title      string    `json:"title"`
+	ArtistName *string   `json:"artist_name,omitempty"`
+	IsActive   bool      `json:"is_active"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // AssetWithIdentifiers includes current active identifiers.

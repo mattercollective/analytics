@@ -42,6 +42,9 @@ func NewRouter(
 	metricsRepo := repository.NewMetricsRepo(pool)
 	syncRepo := repository.NewSyncRepo(pool)
 	assetRepo := repository.NewAssetRepo(pool)
+	revenueRepo := repository.NewRevenueRepo(pool)
+	playlistRepo := repository.NewPlaylistRepo(pool)
+	engagementRepo := repository.NewEngagementRepo(pool)
 
 	// Handlers
 	healthH := handler.NewHealthHandler(pool)
@@ -49,6 +52,10 @@ func NewRouter(
 	assetsH := handler.NewAssetsHandler(assetRepo)
 	syncH := handler.NewSyncHandler(syncRepo, orchestrator)
 	platformsH := handler.NewPlatformsHandler(assetRepo)
+	revenueH := handler.NewRevenueHandler(revenueRepo)
+	artistsH := handler.NewArtistsHandler(metricsRepo)
+	playlistsH := handler.NewPlaylistsHandler(playlistRepo)
+	engagementH := handler.NewEngagementHandler(engagementRepo)
 
 	// Public routes (no auth)
 	r.Get("/health", healthH.Health)
@@ -74,6 +81,8 @@ func NewRouter(
 		r.Get("/analytics/summary", analyticsH.Summary)
 		r.Get("/analytics/top-assets", analyticsH.TopAssets)
 		r.Get("/analytics/territories", analyticsH.Territories)
+		r.Get("/analytics/by-artist", artistsH.ByArtist)
+		r.Get("/analytics/top-artists", artistsH.TopArtists)
 
 		// Assets
 		r.Get("/assets", assetsH.List)
@@ -81,6 +90,25 @@ func NewRouter(
 
 		// Platforms
 		r.Get("/platforms", platformsH.List)
+
+		// Playlists
+		r.Get("/playlists/for-asset", playlistsH.ForAsset)
+		r.Get("/playlists/top", playlistsH.Top)
+		r.Get("/playlists/tracked", playlistsH.Tracked)
+		r.Post("/playlists/track", playlistsH.Track)
+		r.Get("/playlists/{id}/history", playlistsH.History)
+
+		// Engagement
+		r.Get("/engagement/sources", engagementH.Sources)
+		r.Get("/engagement/rates", engagementH.Rates)
+		r.Get("/engagement/discovery", engagementH.Discovery)
+		r.Get("/engagement/demographics", engagementH.Demographics)
+
+		// Revenue
+		r.Get("/revenue/summary", revenueH.Summary)
+		r.Get("/revenue/by-source", revenueH.BySource)
+		r.Get("/revenue/by-territory", revenueH.ByTerritory)
+		r.Get("/revenue/by-platform", revenueH.ByPlatform)
 
 		// Sync management
 		r.Get("/sync/status", syncH.Status)

@@ -15,16 +15,18 @@ import (
 
 // Worker executes a single platform sync: fetch → resolve → UPSERT → audit.
 type Worker struct {
-	metricsRepo *repository.MetricsRepo
-	syncRepo    *repository.SyncRepo
-	logger      zerolog.Logger
+	metricsRepo    *repository.MetricsRepo
+	syncRepo       *repository.SyncRepo
+	engagementRepo *repository.EngagementRepo
+	logger         zerolog.Logger
 }
 
-func NewWorker(metricsRepo *repository.MetricsRepo, syncRepo *repository.SyncRepo, logger zerolog.Logger) *Worker {
+func NewWorker(metricsRepo *repository.MetricsRepo, syncRepo *repository.SyncRepo, engagementRepo *repository.EngagementRepo, logger zerolog.Logger) *Worker {
 	return &Worker{
-		metricsRepo: metricsRepo,
-		syncRepo:    syncRepo,
-		logger:      logger,
+		metricsRepo:    metricsRepo,
+		syncRepo:       syncRepo,
+		engagementRepo: engagementRepo,
+		logger:         logger,
 	}
 }
 
@@ -138,6 +140,12 @@ func (w *Worker) RunSync(ctx context.Context, fetcher platform.Fetcher) error {
 		cursor = result.NextCursor
 	}
 
+	// Engagement + Demographics sync (if platform supports it)
+	if engFetcher, ok := fetcher.(platform.EngagementFetcher); ok && w.engagementRepo != nil {
+		w.syncEngagement(ctx, engFetcher, platformID, since, log)
+		w.syncDemographics(ctx, engFetcher, platformID, since, log)
+	}
+
 	// Update sync state
 	now := time.Now().UTC()
 	if err := w.syncRepo.UpsertSyncState(ctx, platformID, scope, now, maxDate, nil); err != nil {
@@ -233,6 +241,106 @@ func (w *Worker) currentPlatform(rm platform.RawMetric) string {
 		}
 	}
 	return "unknown"
+}
+
+// syncEngagement fetches and stores source-level engagement data.
+func (w *Worker) syncEngagement(ctx context.Context, fetcher platform.EngagementFetcher, platformID string, since time.Time, log zerolog.Logger) {
+	log.Info().Msg("syncing engagement data")
+
+	result, err := fetcher.FetchEngagement(ctx, since, "")
+	if err != nil {
+		log.Warn().Err(err).Msg("engagement fetch failed")
+		return
+	}
+
+	if len(result.Records) == 0 {
+		log.Info().Msg("no engagement records")
+		return
+	}
+
+	// Resolve ISRCs to asset_ids
+	var upserts []model.EngagementUpsert
+	for _, rec := range result.Records {
+		assetID, err := w.metricsRepo.ResolveAssetID(ctx, "isrc", rec.ISRC)
+		if err != nil || assetID == nil {
+			continue
+		}
+
+		u := model.EngagementUpsert{
+			AssetID:        *assetID,
+			PlatformID:     platformID,
+			EngagementDate: rec.Date,
+			Source:         rec.Source,
+			Streams:        rec.Streams,
+			Saves:          rec.Saves,
+			Skips:          rec.Skips,
+			Completions:    rec.Completions,
+			Discovery:      rec.Discovery,
+		}
+		if rec.Territory != "" {
+			u.Territory = &rec.Territory
+		}
+		if rec.SourceURI != "" {
+			u.SourceURI = &rec.SourceURI
+		}
+		upserts = append(upserts, u)
+	}
+
+	if len(upserts) > 0 {
+		n, err := w.engagementRepo.BulkUpsertEngagement(ctx, upserts)
+		if err != nil {
+			log.Error().Err(err).Msg("engagement upsert failed")
+			return
+		}
+		log.Info().Int("records", n).Msg("engagement data synced")
+	}
+}
+
+// syncDemographics fetches and stores age/gender breakdown data.
+func (w *Worker) syncDemographics(ctx context.Context, fetcher platform.EngagementFetcher, platformID string, since time.Time, log zerolog.Logger) {
+	log.Info().Msg("syncing demographics data")
+
+	result, err := fetcher.FetchDemographics(ctx, since, "")
+	if err != nil {
+		log.Warn().Err(err).Msg("demographics fetch failed")
+		return
+	}
+
+	if len(result.Records) == 0 {
+		log.Info().Msg("no demographic records")
+		return
+	}
+
+	var upserts []model.DemographicUpsert
+	for _, rec := range result.Records {
+		assetID, err := w.metricsRepo.ResolveAssetID(ctx, "isrc", rec.ISRC)
+		if err != nil || assetID == nil {
+			continue
+		}
+
+		u := model.DemographicUpsert{
+			AssetID:    *assetID,
+			PlatformID: platformID,
+			DemoDate:   rec.Date,
+			AgeBucket:  rec.AgeBucket,
+			Gender:     rec.Gender,
+			Streams:    rec.Streams,
+			Listeners:  rec.Listeners,
+		}
+		if rec.Territory != "" {
+			u.Territory = &rec.Territory
+		}
+		upserts = append(upserts, u)
+	}
+
+	if len(upserts) > 0 {
+		n, err := w.engagementRepo.BulkUpsertDemographics(ctx, upserts)
+		if err != nil {
+			log.Error().Err(err).Msg("demographics upsert failed")
+			return
+		}
+		log.Info().Int("records", n).Msg("demographics data synced")
+	}
 }
 
 func strPtr(s string) *string { return &s }

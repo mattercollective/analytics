@@ -26,6 +26,7 @@ type Config struct {
 	// Spotify
 	SpotifyClientID     string
 	SpotifyClientSecret string
+	SpotifyLicensorID   string
 
 	// Apple Music
 	AppleTeamID    string
@@ -61,6 +62,7 @@ func Load() (*Config, error) {
 
 		SpotifyClientID:     os.Getenv("SPOTIFY_CLIENT_ID"),
 		SpotifyClientSecret: os.Getenv("SPOTIFY_CLIENT_SECRET"),
+		SpotifyLicensorID:   os.Getenv("SPOTIFY_LICENSOR_ID"),
 
 		AppleTeamID:    os.Getenv("APPLE_TEAM_ID"),
 		AppleKeyID:     os.Getenv("APPLE_KEY_ID"),

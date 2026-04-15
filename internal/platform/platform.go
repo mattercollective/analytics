@@ -23,6 +23,52 @@ type FetchResult struct {
 	HasMore    bool
 }
 
+// EngagementFetcher is an optional interface for platforms that provide
+// source-level engagement and demographic data (e.g., Spotify Bulk API).
+type EngagementFetcher interface {
+	FetchEngagement(ctx context.Context, since time.Time, cursor string) (EngagementResult, error)
+	FetchDemographics(ctx context.Context, since time.Time, cursor string) (DemographicsResult, error)
+}
+
+// RawEngagement is a source-level engagement record before asset resolution.
+type RawEngagement struct {
+	ISRC        string
+	Territory   string
+	Date        time.Time
+	Source      string  // 'playlist', 'radio', 'search', 'album', 'artist_page', etc.
+	SourceURI   string  // e.g., Spotify playlist URI
+	Streams     int64
+	Saves       int64
+	Skips       int64
+	Completions int64
+	Discovery   int64
+}
+
+// EngagementResult contains a page of engagement data.
+type EngagementResult struct {
+	Records    []RawEngagement
+	NextCursor string
+	HasMore    bool
+}
+
+// RawDemographic is an age/gender breakdown record before asset resolution.
+type RawDemographic struct {
+	ISRC      string
+	Territory string
+	Date      time.Time
+	AgeBucket string // '13-17', '18-24', '25-34', etc.
+	Gender    string // 'male', 'female', 'non_binary', 'unknown'
+	Streams   int64
+	Listeners int64
+}
+
+// DemographicsResult contains a page of demographic data.
+type DemographicsResult struct {
+	Records    []RawDemographic
+	NextCursor string
+	HasMore    bool
+}
+
 // RawMetric is a platform-agnostic metric before asset resolution.
 // At least one identifier (ISRC, UPC, YTAssetID) must be set.
 type RawMetric struct {

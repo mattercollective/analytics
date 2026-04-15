@@ -26,8 +26,28 @@ const (
 	MetricShares         MetricType = "shares"
 	MetricComments       MetricType = "comments"
 	MetricContentIDClaims MetricType = "content_id_claims"
-	MetricRevenueEstimate MetricType = "revenue_estimate"
+	MetricRevenueEstimate  MetricType = "revenue_estimate"
+	MetricViewsArtTrack    MetricType = "views_art_track"
+	MetricStreamsArtTrack   MetricType = "streams_art_track"
+	MetricWatchTimeArtTrack MetricType = "watch_time_art_track"
+	MetricViewsMusicVideo  MetricType = "views_music_video"
+	MetricRevenueArtTrack  MetricType = "revenue_art_track"
+	MetricRevenueMusicVideo MetricType = "revenue_music_video"
 )
+
+// ContentTypeMetricMap maps a base metric type to its content-type-specific variant.
+var ContentTypeMetricMap = map[string]map[MetricType]MetricType{
+	"art_track": {
+		MetricStreams:         MetricStreamsArtTrack,
+		MetricViews:          MetricViewsArtTrack,
+		MetricWatchTimeHours: MetricWatchTimeArtTrack,
+		MetricRevenueEstimate: MetricRevenueArtTrack,
+	},
+	"music_video": {
+		MetricViews:           MetricViewsMusicVideo,
+		MetricRevenueEstimate: MetricRevenueMusicVideo,
+	},
+}
 
 // Metric is a single analytics data point stored in analytics.metrics.
 type Metric struct {
@@ -95,7 +115,22 @@ type TerritoryBreakdown struct {
 
 // PlatformBreakdown shows metric values per platform.
 type PlatformBreakdown struct {
-	PlatformID   string                   `json:"platform_id"`
-	DisplayName  string                   `json:"display_name"`
-	Metrics      map[MetricType]int64     `json:"metrics"`
+	PlatformID  string               `json:"platform_id"`
+	DisplayName string               `json:"display_name"`
+	Metrics     map[MetricType]int64 `json:"metrics"`
+}
+
+// ArtistSummary aggregates metrics for a single artist.
+type ArtistSummary struct {
+	ArtistName string           `json:"artist_name"`
+	AssetCount int              `json:"asset_count"`
+	Metrics    map[string]int64 `json:"metrics"`
+}
+
+// TopArtist ranks an artist by a given metric.
+type TopArtist struct {
+	ArtistName string     `json:"artist_name"`
+	AssetCount int        `json:"asset_count"`
+	Value      int64      `json:"value"`
+	MetricType MetricType `json:"metric_type"`
 }
