@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -42,9 +43,10 @@ func (h *SyncHandler) Trigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Run sync in background so we can return immediately
+	// Run sync in background with a detached context so it survives the HTTP response
 	go func() {
-		h.orchestrator.SyncPlatform(r.Context(), platformID)
+		ctx := context.Background()
+		h.orchestrator.SyncPlatform(ctx, platformID)
 	}()
 
 	response.JSON(w, http.StatusAccepted, map[string]string{
