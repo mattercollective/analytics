@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -60,9 +61,10 @@ func (c *Client) FetchSince(ctx context.Context, since time.Time, cursor string)
 
 		metrics, err := c.fetchAggregatedStreams(ctx, url, d)
 		if err != nil {
-			// 404 = no data for that day, skip silently
+			fmt.Printf("[spotify] aggregatedstreams %s: %v\n", d.Format("2006-01-02"), err)
 			continue
 		}
+		fmt.Printf("[spotify] aggregatedstreams %s: %d records\n", d.Format("2006-01-02"), len(metrics))
 		allMetrics = append(allMetrics, metrics...)
 	}
 
@@ -146,45 +148,90 @@ func (c *Client) FetchDemographics(ctx context.Context, since time.Time, cursor 
 }
 
 // fetchNDJSON fetches a gzipped NDJSON endpoint and returns parsed records.
+// The Bulk API returns a 303 redirect to a signed GCS URL for the .gz file.
 func (c *Client) fetchNDJSON(ctx context.Context, url string) ([]map[string]any, error) {
 	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait: %w", err)
+	}
+
+	// Step 1: Hit the Spotify endpoint (returns 303 redirect to signed GCS URL)
+	// Don't follow the redirect — we need to use a plain client for GCS
+	noRedirectClient := &http.Client{
+		Transport: c.httpClient.Transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("Accept-Encoding", "gzip")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := noRedirectClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("execute request: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
 		return nil, fmt.Errorf("no data available")
 	}
-	if resp.StatusCode != http.StatusOK {
+
+	// The API returns 303 with the GCS download URL in Location header or response body
+	var downloadURL string
+	if resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusTemporaryRedirect {
+		downloadURL = resp.Header.Get("Location")
+		if downloadURL == "" {
+			body, _ := io.ReadAll(resp.Body)
+			downloadURL = strings.TrimSpace(string(body))
+		}
+		resp.Body.Close()
+	} else if resp.StatusCode == http.StatusOK {
+		// May return the URL as the response body
 		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		downloadURL = strings.TrimSpace(string(body))
+		if len(downloadURL) > 0 && downloadURL[0] == '[' {
+			return nil, fmt.Errorf("directory listing, not a file")
+		}
+	} else {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		return nil, fmt.Errorf("spotify API error %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Decompress gzip
-	var reader io.Reader = resp.Body
-	if resp.Header.Get("Content-Encoding") == "gzip" || resp.Header.Get("Content-Type") == "application/gzip" {
-		gzReader, err := gzip.NewReader(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("gzip decode: %w", err)
-		}
-		defer gzReader.Close()
-		reader = gzReader
+	if downloadURL == "" {
+		return nil, fmt.Errorf("no download URL in response")
 	}
+
+	// Step 2: Download the gzipped file from GCS (no auth needed — URL is pre-signed)
+	gcsReq, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create GCS request: %w", err)
+	}
+
+	gcsResp, err := http.DefaultClient.Do(gcsReq)
+	if err != nil {
+		return nil, fmt.Errorf("download from GCS: %w", err)
+	}
+	defer gcsResp.Body.Close()
+
+	if gcsResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(gcsResp.Body)
+		return nil, fmt.Errorf("GCS download error %d: %s", gcsResp.StatusCode, string(body))
+	}
+
+	// Step 3: Decompress gzip
+	gzReader, err := gzip.NewReader(gcsResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("gzip decode: %w", err)
+	}
+	defer gzReader.Close()
 
 	// Parse NDJSON (one JSON object per line)
 	var records []map[string]any
-	scanner := bufio.NewScanner(reader)
+	scanner := bufio.NewScanner(gzReader)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	for scanner.Scan() {
