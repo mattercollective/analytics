@@ -15,6 +15,7 @@ import (
 	"github.com/mattercollective/analytics-engine/internal/api/response"
 	"github.com/mattercollective/analytics-engine/internal/config"
 	"github.com/mattercollective/analytics-engine/internal/database"
+	"github.com/mattercollective/analytics-engine/internal/importer"
 	"github.com/mattercollective/analytics-engine/internal/ingestion"
 	"github.com/mattercollective/analytics-engine/internal/repository"
 )
@@ -72,6 +73,78 @@ func main() {
 			"status":   "completed",
 			"platform": platformID,
 		})
+	})
+
+	// Apple GCS reports import — triggered daily after apple-reporter uploads to GCS
+	r.Post("/internal/import/apple-reports", func(w http.ResponseWriter, r *http.Request) {
+		logger.Info().Msg("apple reports import triggered by scheduler")
+
+		gcsClient, err := importer.NewGCSClient(r.Context())
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to create GCS client")
+			response.Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		defer gcsClient.Close()
+
+		playlistRepo := repository.NewPlaylistRepo(pool)
+
+		imp := importer.NewAppleReportsImporter(gcsClient, metricsRepo, playlistRepo, engagementRepo, logger, "matter-reports-raw")
+
+		contentPath := "rebel-apple-reports/sales/amcontent/detailed/daily/AppleMusic_Content_93824149_20260316_V1_2.txt"
+		if err := imp.LoadContentMapping(r.Context(), contentPath); err != nil {
+			logger.Error().Err(err).Msg("failed to load Apple content mapping")
+			response.Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		var total int
+		n1, _ := imp.ImportEditorialPlaylistAdds(r.Context(), "rebel-apple-reports/sales/ameditorialplaylistadds/")
+		n2, _ := imp.ImportDemographics(r.Context(), "rebel-apple-reports/sales/amcontentdemographics/")
+		n3, _ := imp.ImportShazams(r.Context(), "rebel-apple-reports/sales/amshazam/")
+		n4, _ := imp.ImportContainers(r.Context(), "rebel-apple-reports/sales/amcontainer/")
+		total = n1 + n2 + n3 + n4
+
+		logger.Info().Int("playlist_adds", n1).Int("demographics", n2).Int("shazams", n3).Int("containers", n4).Msg("apple reports import complete")
+
+		response.JSON(w, http.StatusOK, map[string]any{
+			"status":        "completed",
+			"playlist_adds": n1,
+			"demographics":  n2,
+			"shazams":       n3,
+			"containers":    n4,
+			"total":         total,
+		})
+	})
+
+	// Apple streams import — triggered daily after apple-reporter uploads to GCS
+	r.Post("/internal/import/apple-streams", func(w http.ResponseWriter, r *http.Request) {
+		logger.Info().Msg("apple streams import triggered by scheduler")
+
+		gcsClient, err := importer.NewGCSClient(r.Context())
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to create GCS client")
+			response.Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		defer gcsClient.Close()
+
+		imp := importer.NewAppleImporter(gcsClient, metricsRepo, logger, "matter-reports-raw")
+
+		contentPath := "rebel-apple-reports/sales/amcontent/detailed/daily/AppleMusic_Content_93824149_20260316_V1_2.txt"
+		if err := imp.LoadContentMapping(r.Context(), contentPath); err != nil {
+			logger.Error().Err(err).Msg("failed to load Apple content mapping")
+			response.Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		if err := imp.ImportAllStreams(r.Context(), "rebel-apple-reports/sales/amstreams/daily/"); err != nil {
+			logger.Error().Err(err).Msg("apple streams import failed")
+			response.Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		response.JSON(w, http.StatusOK, map[string]string{"status": "completed", "platform": "apple_streams"})
 	})
 
 	r.Post("/internal/maintenance/refresh-views", func(w http.ResponseWriter, r *http.Request) {
