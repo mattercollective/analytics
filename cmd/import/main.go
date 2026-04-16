@@ -20,7 +20,7 @@ const defaultBucket = "matter-reports-raw"
 
 func main() {
 	// Flags
-	platform := flag.String("platform", "", "Platform to import: apple, amazon, merlin (required)")
+	platform := flag.String("platform", "", "Platform to import: apple, amazon, merlin, apple-reports (required)")
 	bucket := flag.String("bucket", defaultBucket, "GCS bucket name")
 	dryRun := flag.Bool("dry-run", false, "List files without importing")
 	seedOnly := flag.Bool("seed", false, "Only seed assets (extract ISRCs, create asset records)")
@@ -142,9 +142,14 @@ func main() {
 		return
 	}
 
+	playlistRepo := repository.NewPlaylistRepo(pool)
+	engagementRepo := repository.NewEngagementRepo(pool)
+
 	switch *platform {
 	case "apple":
 		runAppleImport(ctx, gcsClient, metricsRepo, logger, *bucket, *dryRun)
+	case "apple-reports":
+		runAppleReportsImport(ctx, gcsClient, metricsRepo, playlistRepo, engagementRepo, logger, *bucket)
 	case "amazon":
 		runAmazonImport(ctx, gcsClient, metricsRepo, logger, *bucket, *dryRun)
 	case "merlin":
@@ -209,4 +214,54 @@ func runMerlinImport(ctx context.Context, gcs *importer.GCSClient, metricsRepo *
 	if err := imp.ImportAllTrends(ctx, "merlin/trends/"); err != nil {
 		logger.Fatal().Err(err).Msg("Merlin import failed")
 	}
+}
+
+func runAppleReportsImport(ctx context.Context, gcs *importer.GCSClient, metricsRepo *repository.MetricsRepo, playlistRepo *repository.PlaylistRepo, engagementRepo *repository.EngagementRepo, logger zerolog.Logger, bucket string) {
+	imp := importer.NewAppleReportsImporter(gcs, metricsRepo, playlistRepo, engagementRepo, logger, bucket)
+
+	// Load Apple ID → ISRC mapping first
+	contentPath := "rebel-apple-reports/sales/amcontent/detailed/daily/AppleMusic_Content_93824149_20260316_V1_2.txt"
+	if err := imp.LoadContentMapping(ctx, contentPath); err != nil {
+		logger.Fatal().Err(err).Msg("failed to load Apple content mapping")
+	}
+
+	// 1. Editorial Playlist Adds
+	logger.Info().Msg("importing editorial playlist adds...")
+	n1, err := imp.ImportEditorialPlaylistAdds(ctx, "rebel-apple-reports/sales/ameditorialplaylistadds/")
+	if err != nil {
+		logger.Error().Err(err).Msg("editorial playlist import failed")
+	}
+	logger.Info().Int("rows", n1).Msg("editorial playlist adds done")
+
+	// 2. Demographics
+	logger.Info().Msg("importing demographics...")
+	n2, err := imp.ImportDemographics(ctx, "rebel-apple-reports/sales/amcontentdemographics/")
+	if err != nil {
+		logger.Error().Err(err).Msg("demographics import failed")
+	}
+	logger.Info().Int("rows", n2).Msg("demographics done")
+
+	// 3. Shazams
+	logger.Info().Msg("importing shazams...")
+	n3, err := imp.ImportShazams(ctx, "rebel-apple-reports/sales/amshazam/")
+	if err != nil {
+		logger.Error().Err(err).Msg("shazam import failed")
+	}
+	logger.Info().Int("rows", n3).Msg("shazams done")
+
+	// 4. Container/Source of Stream
+	logger.Info().Msg("importing containers (source of stream)...")
+	n4, err := imp.ImportContainers(ctx, "rebel-apple-reports/sales/amcontainer/")
+	if err != nil {
+		logger.Error().Err(err).Msg("container import failed")
+	}
+	logger.Info().Int("rows", n4).Msg("containers done")
+
+	logger.Info().
+		Int("playlist_adds", n1).
+		Int("demographics", n2).
+		Int("shazams", n3).
+		Int("containers", n4).
+		Int("total", n1+n2+n3+n4).
+		Msg("all Apple reports imported")
 }
