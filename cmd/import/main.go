@@ -154,6 +154,8 @@ func main() {
 		runAmazonImport(ctx, gcsClient, metricsRepo, logger, *bucket, *dryRun)
 	case "merlin":
 		runMerlinImport(ctx, gcsClient, metricsRepo, logger, *bucket, *dryRun)
+	case "merlin-sales":
+		runMerlinSalesImport(ctx, gcsClient, metricsRepo, repository.NewRevenueRepo(pool), logger, *bucket)
 	default:
 		logger.Fatal().Str("platform", *platform).Msg("unknown platform")
 	}
@@ -214,6 +216,22 @@ func runMerlinImport(ctx context.Context, gcs *importer.GCSClient, metricsRepo *
 	if err := imp.ImportAllTrends(ctx, "merlin/trends/"); err != nil {
 		logger.Fatal().Err(err).Msg("Merlin import failed")
 	}
+}
+
+func runMerlinSalesImport(ctx context.Context, gcs *importer.GCSClient, metricsRepo *repository.MetricsRepo, revenueRepo *repository.RevenueRepo, logger zerolog.Logger, bucket string) {
+	imp := importer.NewMerlinSalesImporter(gcs, metricsRepo, revenueRepo, logger, bucket)
+
+	results, err := imp.ImportAll(ctx)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Merlin sales import failed")
+	}
+
+	total := 0
+	for platform, count := range results {
+		logger.Info().Str("platform", platform).Int("rows", count).Msg("platform imported")
+		total += count
+	}
+	logger.Info().Int("total", total).Int("platforms", len(results)).Msg("Merlin sales import complete")
 }
 
 func runAppleReportsImport(ctx context.Context, gcs *importer.GCSClient, metricsRepo *repository.MetricsRepo, playlistRepo *repository.PlaylistRepo, engagementRepo *repository.EngagementRepo, logger zerolog.Logger, bucket string) {

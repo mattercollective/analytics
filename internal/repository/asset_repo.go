@@ -20,10 +20,10 @@ func NewAssetRepo(pool *pgxpool.Pool) *AssetRepo {
 	return &AssetRepo{pool: pool}
 }
 
-// ListAssets returns assets with optional search and client filter.
-func (r *AssetRepo) ListAssets(ctx context.Context, search *string, clientID *uuid.UUID, page, perPage int) ([]model.AssetWithIdentifiers, int, error) {
+// ListAssets returns assets with optional search, client, ISRC, and UPC filters.
+func (r *AssetRepo) ListAssets(ctx context.Context, search *string, clientID *uuid.UUID, isrc *string, upc *string, page, perPage int) ([]model.AssetWithIdentifiers, int, error) {
 	var where []string
-	args := make([]any, 0, 4)
+	args := make([]any, 0, 6)
 	argIdx := 1
 
 	if clientID != nil {
@@ -35,6 +35,18 @@ func (r *AssetRepo) ListAssets(ctx context.Context, search *string, clientID *uu
 	if search != nil && *search != "" {
 		where = append(where, fmt.Sprintf("to_tsvector('english', a.title) @@ plainto_tsquery('english', $%d)", argIdx))
 		args = append(args, *search)
+		argIdx++
+	}
+
+	if isrc != nil && *isrc != "" {
+		where = append(where, fmt.Sprintf("a.id IN (SELECT asset_id FROM public.asset_identifiers WHERE identifier_type = 'isrc' AND identifier_value = $%d AND effective_to IS NULL)", argIdx))
+		args = append(args, *isrc)
+		argIdx++
+	}
+
+	if upc != nil && *upc != "" {
+		where = append(where, fmt.Sprintf("a.id IN (SELECT asset_id FROM public.asset_identifiers WHERE identifier_type = 'upc' AND identifier_value = $%d AND effective_to IS NULL)", argIdx))
+		args = append(args, *upc)
 		argIdx++
 	}
 

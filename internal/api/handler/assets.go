@@ -52,7 +52,17 @@ func (h *AssetsHandler) List(w http.ResponseWriter, r *http.Request) {
 		clientID = &id
 	}
 
-	assets, total, err := h.assetRepo.ListAssets(r.Context(), search, clientID, page, perPage)
+	var isrc *string
+	if i := q.Get("isrc"); i != "" {
+		isrc = &i
+	}
+
+	var upc *string
+	if u := q.Get("upc"); u != "" {
+		upc = &u
+	}
+
+	assets, total, err := h.assetRepo.ListAssets(r.Context(), search, clientID, isrc, upc, page, perPage)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "query failed")
 		return
