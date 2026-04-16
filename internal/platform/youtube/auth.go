@@ -10,14 +10,16 @@ import (
 )
 
 const (
-	scopeYouTubeAnalytics = "https://www.googleapis.com/auth/yt-analytics.readonly"
-	scopeYouTubePartner   = "https://www.googleapis.com/auth/youtubepartner"
+	scopeYouTubeAnalytics         = "https://www.googleapis.com/auth/yt-analytics.readonly"
+	scopeYouTubeAnalyticsMonetary = "https://www.googleapis.com/auth/yt-analytics-monetary.readonly"
+	scopeYouTubePartner           = "https://www.googleapis.com/auth/youtubepartner"
 )
 
 // NewAuthenticatedClient creates an *http.Client authenticated via a GCP service account.
 func NewAuthenticatedClient(ctx context.Context, serviceAccountJSON string) (*http.Client, error) {
 	creds, err := google.CredentialsFromJSON(ctx, []byte(serviceAccountJSON),
 		scopeYouTubeAnalytics,
+		scopeYouTubeAnalyticsMonetary,
 		scopeYouTubePartner,
 	)
 	if err != nil {

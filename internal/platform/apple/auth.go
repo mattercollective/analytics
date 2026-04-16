@@ -57,10 +57,10 @@ func (t *appleTransport) getToken() (string, error) {
 	}
 
 	now := time.Now()
-	exp := now.Add(12 * time.Hour) // Apple tokens valid up to 6 months, but rotate frequently
+	exp := now.Add(15 * time.Minute) // Apple Music Analytics tokens valid 20 min, refresh at 15
 
 	claims := jwt.MapClaims{
-		"iss": t.teamID,
+		"iss": t.teamID, // This is the Issuer ID from iTunes Connect
 		"iat": now.Unix(),
 		"exp": exp.Unix(),
 	}

@@ -66,9 +66,9 @@ func Load() (*Config, error) {
 
 		AppleTeamID:    os.Getenv("APPLE_TEAM_ID"),
 		AppleKeyID:     os.Getenv("APPLE_KEY_ID"),
-		ApplePrivateKey: os.Getenv("APPLE_PRIVATE_KEY"),
+		ApplePrivateKey: loadFileOrEnv("APPLE_PRIVATE_KEY"),
 
-		YouTubeServiceAccountJSON: os.Getenv("YOUTUBE_SERVICE_ACCOUNT_JSON"),
+		YouTubeServiceAccountJSON: loadFileOrEnv("YOUTUBE_SERVICE_ACCOUNT_JSON"),
 		YouTubeContentOwnerID:     os.Getenv("YOUTUBE_CONTENT_OWNER_ID"),
 
 		AmazonAPIKey:    os.Getenv("AMAZON_API_KEY"),
@@ -102,6 +102,21 @@ func envIntOrDefault(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+// loadFileOrEnv reads the env var — if it's a file path ending in .json, reads the file contents.
+func loadFileOrEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		return ""
+	}
+	if len(v) < 500 && (strings.HasSuffix(v, ".json") || strings.HasPrefix(v, "/")) {
+		data, err := os.ReadFile(v)
+		if err == nil {
+			return string(data)
+		}
+	}
+	return v
 }
 
 func splitCSV(s string) []string {
