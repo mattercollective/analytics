@@ -25,6 +25,7 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "List files without importing")
 	seedOnly := flag.Bool("seed", false, "Only seed assets (extract ISRCs, create asset records)")
 	backfillArtists := flag.Bool("backfill-artists", false, "Backfill artist_name on existing assets from report data")
+	syncISRCMappings := flag.Bool("sync-isrc-mappings", false, "Sync ISRC→client mappings from CMS asset_reports_with_org view")
 	cmsSync := flag.Bool("cms-sync", false, "Sync organizations, channels, and YT assets from CMS Supabase")
 	cmsURL := flag.String("cms-url", "https://qckfotfuiowzzjoczmau.supabase.co", "CMS Supabase API URL")
 	cmsKey := flag.String("cms-key", "", "CMS Supabase service_role key")
@@ -32,6 +33,8 @@ func main() {
 
 	if *backfillArtists {
 		// Skip to backfill mode — handled after DB and GCS init
+	} else if *syncISRCMappings {
+		// Skip to ISRC mapping sync
 	} else if *cmsSync {
 		if *cmsKey == "" {
 			fmt.Println("Usage: import -cms-sync -cms-key <service_role_key>")
@@ -78,6 +81,21 @@ func main() {
 			logger.Fatal().Err(err).Msg("artist backfill failed")
 		}
 		logger.Info().Int("updated", updated).Msg("artist backfill complete")
+		return
+	}
+
+	// ISRC client mappings sync
+	if *syncISRCMappings {
+		if *cmsKey == "" {
+			fmt.Println("Usage: import -sync-isrc-mappings -cms-key <service_role_key>")
+			os.Exit(1)
+		}
+		sync := importer.NewCMSSync(pool, *cmsURL, *cmsKey, logger)
+		n, err := sync.SyncISRCClientMappings(ctx)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("ISRC mapping sync failed")
+		}
+		logger.Info().Int("mappings", n).Msg("ISRC client mappings synced")
 		return
 	}
 
