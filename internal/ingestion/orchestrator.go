@@ -81,6 +81,11 @@ func (o *Orchestrator) SyncPlatform(ctx context.Context, platformID string) erro
 	return o.worker.RunSync(ctx, fetcher)
 }
 
+// GetFetcher returns the registered fetcher for a platform, or nil.
+func (o *Orchestrator) GetFetcher(platformID string) platform.Fetcher {
+	return o.fetchers[platformID]
+}
+
 // RegisteredPlatforms returns the list of initialized platform IDs.
 func (o *Orchestrator) RegisteredPlatforms() []string {
 	platforms := make([]string, 0, len(o.fetchers))

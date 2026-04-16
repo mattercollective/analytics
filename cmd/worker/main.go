@@ -17,6 +17,7 @@ import (
 	"github.com/mattercollective/analytics-engine/internal/database"
 	"github.com/mattercollective/analytics-engine/internal/importer"
 	"github.com/mattercollective/analytics-engine/internal/ingestion"
+	"github.com/mattercollective/analytics-engine/internal/platform/spotify"
 	"github.com/mattercollective/analytics-engine/internal/repository"
 )
 
@@ -145,6 +146,40 @@ func main() {
 		}
 
 		response.JSON(w, http.StatusOK, map[string]string{"status": "completed", "platform": "apple_streams"})
+	})
+
+	// Playlist polling — snapshots tracked playlists daily
+	r.Post("/internal/playlists/poll", func(w http.ResponseWriter, r *http.Request) {
+		logger.Info().Msg("playlist poll triggered by scheduler")
+
+		playlistRepo := repository.NewPlaylistRepo(pool)
+
+		// Get Spotify playlist fetcher from the orchestrator's registered fetcher
+		var spotifyPF *spotify.PlaylistFetcher
+		if fetcher := orchestrator.GetFetcher("spotify"); fetcher != nil {
+			if sc, ok := fetcher.(*spotify.Client); ok {
+				spotifyPF = sc.GetPlaylistFetcher()
+			}
+		}
+
+		if spotifyPF == nil {
+			logger.Warn().Msg("spotify adapter not available for playlist polling")
+			response.Error(w, http.StatusServiceUnavailable, "spotify adapter not configured")
+			return
+		}
+
+		poller := ingestion.NewPlaylistPoller(playlistRepo, metricsRepo, spotifyPF, logger)
+		n, err := poller.PollAll(r.Context())
+		if err != nil {
+			logger.Error().Err(err).Msg("playlist poll failed")
+			response.Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		response.JSON(w, http.StatusOK, map[string]any{
+			"status":    "completed",
+			"positions": n,
+		})
 	})
 
 	r.Post("/internal/maintenance/refresh-views", func(w http.ResponseWriter, r *http.Request) {

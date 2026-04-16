@@ -86,23 +86,40 @@ func (c *Client) fetchAggregatedStreams(ctx context.Context, url string, date ti
 	return transformAggregatedStreams(records, date), nil
 }
 
+// Top markets to fetch raw streams from (covers ~80% of streams)
+var topMarkets = []string{"US", "GB", "DE", "BR", "FR", "MX", "CA", "AU", "IN", "NL", "SE", "ES", "IT", "JP", "PH"}
+
 // FetchEngagement retrieves per-source engagement data from raw streams.
-// Uses the streams resource which has source, source_uri, discovery_flag, etc.
+// Downloads tracks file for track_id→ISRC mapping, then raw streams for top markets.
 func (c *Client) FetchEngagement(ctx context.Context, since time.Time, cursor string) (platform.EngagementResult, error) {
 	var allRecords []platform.RawEngagement
 
 	end := time.Now().UTC().Truncate(24 * time.Hour)
 	for d := since; !d.After(end); d = d.AddDate(0, 0, 1) {
-		// First get available countries for this day
-		countriesURL := fmt.Sprintf("%s/%s/enhanced/streams/%d/%02d/%02d",
+		// Step 1: Load track_id → ISRC mapping for this day
+		tracksURL := fmt.Sprintf("%s/%s/enhanced/tracks/%d/%02d/%02d",
 			bulkBaseURL, c.licensorID, d.Year(), d.Month(), d.Day())
-
-		// Fetch the stream data (may be partitioned by country)
-		records, err := c.fetchStreamEngagement(ctx, countriesURL, d)
+		trackMap, err := c.loadTrackMap(ctx, tracksURL)
 		if err != nil {
+			fmt.Printf("[spotify] tracks %s: %v\n", d.Format("2006-01-02"), err)
 			continue
 		}
-		allRecords = append(allRecords, records...)
+		fmt.Printf("[spotify] tracks %s: %d mappings loaded\n", d.Format("2006-01-02"), len(trackMap))
+
+		// Step 2: Download raw streams for top markets only
+		for _, country := range topMarkets {
+			streamURL := fmt.Sprintf("%s/%s/enhanced/streams/%d/%02d/%02d/%s",
+				bulkBaseURL, c.licensorID, d.Year(), d.Month(), d.Day(), country)
+
+			records, err := c.fetchNDJSON(ctx, streamURL)
+			if err != nil {
+				continue // 404 = no data for this country
+			}
+
+			engagements := aggregateStreamEngagement(records, d, country, trackMap)
+			allRecords = append(allRecords, engagements...)
+		}
+		fmt.Printf("[spotify] engagement %s: %d records from %d markets\n", d.Format("2006-01-02"), len(allRecords), len(topMarkets))
 	}
 
 	return platform.EngagementResult{
@@ -112,14 +129,22 @@ func (c *Client) FetchEngagement(ctx context.Context, since time.Time, cursor st
 	}, nil
 }
 
-// fetchStreamEngagement processes raw stream records into source-level engagement aggregates.
-func (c *Client) fetchStreamEngagement(ctx context.Context, url string, date time.Time) ([]platform.RawEngagement, error) {
+// loadTrackMap downloads the tracks resource and builds a track_id → ISRC map.
+func (c *Client) loadTrackMap(ctx context.Context, url string) (map[string]string, error) {
 	records, err := c.fetchNDJSON(ctx, url)
 	if err != nil {
 		return nil, err
 	}
 
-	return aggregateStreamEngagement(records, date), nil
+	trackMap := make(map[string]string, len(records))
+	for _, rec := range records {
+		trackID := getString(rec, "track_id")
+		isrc := getString(rec, "isrc")
+		if trackID != "" && isrc != "" {
+			trackMap[trackID] = isrc
+		}
+	}
+	return trackMap, nil
 }
 
 // FetchDemographics retrieves user demographic data.

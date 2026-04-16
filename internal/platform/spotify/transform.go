@@ -85,9 +85,8 @@ func transformAggregatedStreams(records []map[string]any, date time.Time) []plat
 }
 
 // aggregateStreamEngagement processes raw stream records into per-source engagement.
-// Raw stream records have: track_id, source, source_uri, discovery_flag, completion_flag.
-func aggregateStreamEngagement(records []map[string]any, date time.Time) []platform.RawEngagement {
-	// Aggregate by (ISRC, territory, source)
+// Uses trackMap to resolve track_id → ISRC since raw streams don't include ISRC directly.
+func aggregateStreamEngagement(records []map[string]any, date time.Time, country string, trackMap map[string]string) []platform.RawEngagement {
 	type key struct {
 		ISRC      string
 		Territory string
@@ -96,23 +95,21 @@ func aggregateStreamEngagement(records []map[string]any, date time.Time) []platf
 	agg := make(map[key]*platform.RawEngagement)
 
 	for _, rec := range records {
-		// Raw streams use track_id not ISRC directly — need to join with tracks resource
-		// For now, use ISRC if available in the record
-		isrc := getString(rec, "isrc")
+		trackID := getString(rec, "track_id")
+		isrc := trackMap[trackID]
 		if isrc == "" {
 			continue
 		}
 
-		territory := getString(rec, "country")
 		source := mapSource(getString(rec, "source"))
 		sourceURI := getString(rec, "source_uri")
 
-		k := key{ISRC: isrc, Territory: territory, Source: source}
+		k := key{ISRC: isrc, Territory: country, Source: source}
 		eng, ok := agg[k]
 		if !ok {
 			eng = &platform.RawEngagement{
 				ISRC:      isrc,
-				Territory: territory,
+				Territory: country,
 				Date:      date,
 				Source:    source,
 				SourceURI: sourceURI,
