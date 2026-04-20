@@ -26,6 +26,7 @@ func main() {
 	seedOnly := flag.Bool("seed", false, "Only seed assets (extract ISRCs, create asset records)")
 	backfillArtists := flag.Bool("backfill-artists", false, "Backfill artist_name on existing assets from report data")
 	syncISRCMappings := flag.Bool("sync-isrc-mappings", false, "Sync ISRC→client mappings from CMS asset_reports_with_org view")
+	unifyAssets := flag.Bool("unify-assets", false, "Merge fragmented YouTube + ISRC asset pools using CMS as source of truth")
 	cmsSync := flag.Bool("cms-sync", false, "Sync organizations, channels, and YT assets from CMS Supabase")
 	cmsURL := flag.String("cms-url", "https://qckfotfuiowzzjoczmau.supabase.co", "CMS Supabase API URL")
 	cmsKey := flag.String("cms-key", "", "CMS Supabase service_role key")
@@ -35,6 +36,8 @@ func main() {
 		// Skip to backfill mode — handled after DB and GCS init
 	} else if *syncISRCMappings {
 		// Skip to ISRC mapping sync
+	} else if *unifyAssets {
+		// Skip to asset unification
 	} else if *cmsSync {
 		if *cmsKey == "" {
 			fmt.Println("Usage: import -cms-sync -cms-key <service_role_key>")
@@ -81,6 +84,25 @@ func main() {
 			logger.Fatal().Err(err).Msg("artist backfill failed")
 		}
 		logger.Info().Int("updated", updated).Msg("artist backfill complete")
+		return
+	}
+
+	// Asset unification — merge YT and ISRC pools
+	if *unifyAssets {
+		if *cmsKey == "" {
+			fmt.Println("Usage: import -unify-assets -cms-key <service_role_key>")
+			os.Exit(1)
+		}
+		sync := importer.NewCMSSync(pool, *cmsURL, *cmsKey, logger)
+		result, err := sync.UnifyAssets(ctx)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("asset unification failed")
+		}
+		logger.Info().
+			Int("merged", result.AssetsMerged).
+			Int("isrcs_added", result.ISRCsAdded).
+			Int("mappings", result.ClientMappingsAdded).
+			Msg("asset unification done")
 		return
 	}
 
