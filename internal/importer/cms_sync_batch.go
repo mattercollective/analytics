@@ -93,7 +93,7 @@ func (c *CMSSyncBatch) insertBatch(ctx context.Context, assets []cmsYTAsset) (in
 
 	rows, err := c.pool.Query(ctx,
 		`SELECT identifier_value FROM public.asset_identifiers
-		 WHERE identifier_type = 'yt_asset_id' AND identifier_value = ANY($1) AND effective_to IS NULL`,
+		 WHERE identifier_type = 'yt_asset_id' AND identifier_value = ANY($1)`,
 		ytIDs,
 	)
 	if err != nil {
@@ -218,7 +218,7 @@ func (c *CMSSyncBatch) createMappingsForExisting(ctx context.Context, assets []c
 
 		var assetID string
 		err := c.pool.QueryRow(ctx,
-			`SELECT asset_id::text FROM public.asset_identifiers WHERE identifier_type = 'yt_asset_id' AND identifier_value = $1 AND effective_to IS NULL LIMIT 1`,
+			`SELECT asset_id::text FROM public.asset_identifiers WHERE identifier_type = 'yt_asset_id' AND identifier_value = $1 LIMIT 1`,
 			a.AssetID,
 		).Scan(&assetID)
 		if err != nil {

@@ -204,7 +204,7 @@ func (r *MetricsRepo) QueryTopAssets(ctx context.Context, clientID uuid.UUID, me
 		LEFT JOIN LATERAL (
 			SELECT ai.identifier_value AS isrc
 			FROM public.asset_identifiers ai
-			WHERE ai.asset_id = a.id AND ai.identifier_type = 'isrc' AND ai.effective_to IS NULL
+			WHERE ai.asset_id = a.id AND ai.identifier_type = 'isrc'
 			LIMIT 1
 		) ci ON true
 		WHERE m.metric_type = $%d::analytics.metric_type
@@ -411,7 +411,7 @@ func (r *MetricsRepo) ResolveAssetID(ctx context.Context, identifierType, identi
 	var assetID uuid.UUID
 	err := r.pool.QueryRow(ctx,
 		`SELECT asset_id FROM public.asset_identifiers
-		 WHERE identifier_type = $1::identifier_type AND identifier_value = $2 AND effective_to IS NULL
+		 WHERE identifier_type = $1::identifier_type AND identifier_value = $2
 		 LIMIT 1`,
 		identifierType, identifierValue,
 	).Scan(&assetID)

@@ -120,7 +120,7 @@ func (c *CMSSync) UnifyAssets(ctx context.Context) (UnifyResult, error) {
 		var ytAssetUUID string
 		err := c.pool.QueryRow(ctx,
 			`SELECT asset_id FROM public.asset_identifiers
-			 WHERE identifier_type = 'yt_asset_id' AND identifier_value = $1 AND effective_to IS NULL
+			 WHERE identifier_type = 'yt_asset_id' AND identifier_value = $1
 			 LIMIT 1`,
 			auth.CMSAssetID,
 		).Scan(&ytAssetUUID)
@@ -134,7 +134,7 @@ func (c *CMSSync) UnifyAssets(ctx context.Context) (UnifyResult, error) {
 		var isrcAssetUUID string
 		err = c.pool.QueryRow(ctx,
 			`SELECT asset_id FROM public.asset_identifiers
-			 WHERE identifier_type = 'isrc' AND identifier_value = $1 AND effective_to IS NULL
+			 WHERE identifier_type = 'isrc' AND identifier_value = $1
 			 LIMIT 1`,
 			isrc,
 		).Scan(&isrcAssetUUID)

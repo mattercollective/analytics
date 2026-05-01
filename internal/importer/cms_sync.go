@@ -90,7 +90,7 @@ func (c *CMSSync) SyncChannels(ctx context.Context) (int, error) {
 		// Check if this channel ID already exists as an asset
 		var exists bool
 		c.pool.QueryRow(ctx,
-			`SELECT EXISTS(SELECT 1 FROM public.asset_identifiers WHERE identifier_type = 'yt_channel_id' AND identifier_value = $1 AND effective_to IS NULL)`,
+			`SELECT EXISTS(SELECT 1 FROM public.asset_identifiers WHERE identifier_type = 'yt_channel_id' AND identifier_value = $1)`,
 			ch.ID,
 		).Scan(&exists)
 
@@ -175,7 +175,7 @@ func (c *CMSSync) SyncYouTubeAssets(ctx context.Context) (int, int, error) {
 		// Check if already exists
 		var existingAssetID *string
 		c.pool.QueryRow(ctx,
-			`SELECT asset_id::text FROM public.asset_identifiers WHERE identifier_type = 'yt_asset_id' AND identifier_value = $1 AND effective_to IS NULL LIMIT 1`,
+			`SELECT asset_id::text FROM public.asset_identifiers WHERE identifier_type = 'yt_asset_id' AND identifier_value = $1 LIMIT 1`,
 			asset.AssetID,
 		).Scan(&existingAssetID)
 

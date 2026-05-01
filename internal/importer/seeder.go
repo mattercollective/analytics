@@ -317,7 +317,7 @@ func (s *AssetSeeder) insertTracks(ctx context.Context, tracks map[string]trackI
 	for _, info := range tracks {
 		var exists bool
 		err := s.pool.QueryRow(ctx,
-			`SELECT EXISTS(SELECT 1 FROM public.asset_identifiers WHERE identifier_type = 'isrc' AND identifier_value = $1 AND effective_to IS NULL)`,
+			`SELECT EXISTS(SELECT 1 FROM public.asset_identifiers WHERE identifier_type = 'isrc' AND identifier_value = $1)`,
 			info.ISRC,
 		).Scan(&exists)
 		if err != nil {
@@ -334,7 +334,7 @@ func (s *AssetSeeder) insertTracks(ctx context.Context, tracks map[string]trackI
 			var ytAssetUUID string
 			err := s.pool.QueryRow(ctx,
 				`SELECT asset_id FROM public.asset_identifiers
-				 WHERE identifier_type = 'yt_asset_id' AND identifier_value = $1 AND effective_to IS NULL
+				 WHERE identifier_type = 'yt_asset_id' AND identifier_value = $1
 				 LIMIT 1`,
 				ref.CMSAssetID,
 			).Scan(&ytAssetUUID)
@@ -606,7 +606,6 @@ func (s *AssetSeeder) BackfillArtistNames(ctx context.Context, applePath, amazon
 			 WHERE ai.asset_id = a.id
 			   AND ai.identifier_type = 'isrc'
 			   AND ai.identifier_value = $2
-			   AND ai.effective_to IS NULL
 			   AND a.artist_name IS NULL`,
 			artist, isrc,
 		)

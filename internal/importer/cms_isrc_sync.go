@@ -102,7 +102,7 @@ func (c *CMSSync) SyncISRCClientMappings(ctx context.Context) (int, error) {
 		var assetID string
 		err := c.pool.QueryRow(ctx,
 			`SELECT asset_id FROM public.asset_identifiers
-			 WHERE identifier_type = 'isrc' AND identifier_value = $1 AND effective_to IS NULL
+			 WHERE identifier_type = 'isrc' AND identifier_value = $1
 			 LIMIT 1`,
 			isrc,
 		).Scan(&assetID)

@@ -39,13 +39,13 @@ func (r *AssetRepo) ListAssets(ctx context.Context, search *string, clientID *uu
 	}
 
 	if isrc != nil && *isrc != "" {
-		where = append(where, fmt.Sprintf("a.id IN (SELECT asset_id FROM public.asset_identifiers WHERE identifier_type = 'isrc' AND identifier_value = $%d AND effective_to IS NULL)", argIdx))
+		where = append(where, fmt.Sprintf("a.id IN (SELECT asset_id FROM public.asset_identifiers WHERE identifier_type = 'isrc' AND identifier_value = $%d)", argIdx))
 		args = append(args, *isrc)
 		argIdx++
 	}
 
 	if upc != nil && *upc != "" {
-		where = append(where, fmt.Sprintf("a.id IN (SELECT asset_id FROM public.asset_identifiers WHERE identifier_type = 'upc' AND identifier_value = $%d AND effective_to IS NULL)", argIdx))
+		where = append(where, fmt.Sprintf("a.id IN (SELECT asset_id FROM public.asset_identifiers WHERE identifier_type = 'upc' AND identifier_value = $%d)", argIdx))
 		args = append(args, *upc)
 		argIdx++
 	}
